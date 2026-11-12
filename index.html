@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
+<title>Tablero del supervisor</title>
+<style>
+:root{color-scheme:light;--azul:#1E3A6E;--naranja:#EF7C11;--papel:#F3F5F9;--tarjeta:#fff;--linea:#E2E7EF;--texto:#14223A;
+--texto2:#4A5568;--critico:#C2362E;--critico-suave:#FCEBE9;--atencion:#9A6510;--atencion-suave:#FDF3DC}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--azul:#86A9E3;--papel:#0E1522;--tarjeta:#162033;--linea:#26344D;
+--texto:#EEF2F8;--texto2:#C3CAD6;--critico:#F27D73;--critico-suave:rgba(242,125,115,.14);--atencion:#F3C25E;
+--atencion-suave:rgba(243,194,94,.13)}}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--papel);color:var(--texto);font:15px/1.5 Montserrat,"Segoe UI",system-ui,-apple-system,sans-serif}
+#acceso{min-height:100%;display:grid;place-items:center;padding:24px 16px}
+.caja{width:100%;max-width:380px;background:var(--tarjeta);border:1px solid var(--linea);border-top:5px solid var(--naranja);
+border-radius:14px;padding:26px 24px;box-shadow:0 6px 24px rgba(20,34,58,.08)}
+.kicker{color:var(--naranja);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:11.5px}
+h1{margin:4px 0 6px;font-size:22px;font-weight:800}
+p{color:var(--texto2);font-size:13.5px;margin:0 0 16px}
+label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--texto2);margin-bottom:6px}
+input[type=password]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--linea);border-radius:8px;
+background:var(--papel);color:var(--texto)}
+input[type=password]:focus{outline:2px solid var(--azul);outline-offset:1px}
+.recordar{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--texto2);margin:12px 0 16px;text-transform:none;
+letter-spacing:0;font-weight:500}
+button{font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:8px;padding:10px 14px;background:var(--azul);color:#fff;width:100%}
+button:disabled{opacity:.6;cursor:wait}
+.error{display:none;margin-top:12px;background:var(--critico-suave);color:var(--critico);border-radius:8px;padding:8px 10px;font-size:13px}
+.pie{font-size:11.5px;color:var(--texto2);margin-top:16px;opacity:.8}
+#visor{display:none;position:fixed;inset:0;width:100%;height:100%;border:0;background:var(--papel)}
+#barra{display:none;position:fixed;right:12px;bottom:12px;z-index:10;gap:6px;align-items:center;font-size:12px}
+#barra span,#barra button{width:auto;background:var(--tarjeta);color:var(--texto2);border:1px solid var(--linea);border-radius:999px;
+padding:5px 11px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+#barra span.viejo{background:var(--atencion-suave);color:var(--atencion);border-color:transparent}
+</style></head><body>
+<div id="acceso"><form class="caja" id="form" autocomplete="off">
+<div class="kicker">Fiestas de la Independencia 2026</div><h1>Tablero del supervisor</h1>
+<p>Uso interno. Escriba la contraseña que le dio el coordinador.</p>
+<label for="clave">Contraseña</label><input type="password" id="clave" required autofocus>
+<label class="recordar"><input type="checkbox" id="recordar"> Recordar en este equipo</label>
+<button id="entrar" type="submit">Entrar</button>
+<div class="error" id="error"></div>
+<div class="pie">El tablero viaja cifrado y se descifra solo en su navegador.</div>
+</form></div>
+<iframe id="visor" title="Tablero del supervisor"></iframe>
+<div id="barra"><span id="estado">—</span><button type="button" id="salir">Salir</button></div>
+<script>
+(function(){
+"use strict";
+var CLAVE_KEY='tablero-clave',clave=null,ultimo=null,$=function(i){return document.getElementById(i)};
+function b64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+function leer(){return fetch('tablero.enc?t='+Date.now(),{cache:'no-store'}).then(function(r){
+  if(!r.ok)throw new Error('No se pudo descargar el tablero ('+r.status+').');return r.json()})}
+function descifrar(p,c){var enc=new TextEncoder();
+  return crypto.subtle.importKey('raw',enc.encode(c),'PBKDF2',false,['deriveKey']).then(function(k){
+    return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(p.sal),iterations:p.it,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['decrypt'])
+  }).then(function(llave){return crypto.subtle.decrypt({name:'AES-GCM',iv:b64(p.iv)},llave,b64(p.ct))})
+  .then(function(buf){return new TextDecoder().decode(buf)})}
+function guardada(){try{return sessionStorage.getItem(CLAVE_KEY)||localStorage.getItem(CLAVE_KEY)}catch(e){return null}}
+function olvidar(){try{sessionStorage.removeItem(CLAVE_KEY);localStorage.removeItem(CLAVE_KEY)}catch(e){}}
+function marcarEstado(p){var t=new Date(p.generado.replace(' ','T')),m=Math.round((Date.now()-t)/60000),e=$('estado');
+  e.textContent='Datos de las '+p.generado.slice(11)+(m>12?' · hace '+m+' min, revise con el coordinador':'');
+  e.className=m>12?'viejo':''}
+function mostrar(p,html){var v=$('visor'),y=0;
+  try{y=v.contentWindow&&v.contentWindow.scrollY||0}catch(e){}
+  v.onload=function(){try{v.contentWindow.scrollTo(0,y)}catch(e){}};
+  v.srcdoc=html;ultimo=p.generado;marcarEstado(p);
+  $('acceso').style.display='none';v.style.display='block';$('barra').style.display='flex'}
+function entrar(c,recordar){$('entrar').disabled=true;$('entrar').textContent='Abriendo…';$('error').style.display='none';
+  return leer().then(function(p){return descifrar(p,c).then(function(html){
+      clave=c;try{(recordar?localStorage:sessionStorage).setItem(CLAVE_KEY,c)}catch(e){}mostrar(p,html)})
+    .catch(function(){throw new Error('Contraseña incorrecta.')})})
+  .catch(function(err){olvidar();$('visor').style.display='none';$('barra').style.display='none';$('acceso').style.display='grid';
+    $('error').textContent=err.message;$('error').style.display='block'})
+  .then(function(){$('entrar').disabled=false;$('entrar').textContent='Entrar'})}
+function revisar(){if(!clave)return;leer().then(function(p){if(p.generado!==ultimo)return descifrar(p,clave).then(function(h){mostrar(p,h)});
+  marcarEstado(p)}).catch(function(){$('estado').textContent='Sin conexión: se reintenta en 2 min';$('estado').className='viejo'})}
+$('form').onsubmit=function(ev){ev.preventDefault();entrar($('clave').value,$('recordar').checked);$('clave').value=''};
+$('salir').onclick=function(){olvidar();clave=null;location.reload()};
+var g=guardada();if(g)entrar(g,false);
+setInterval(revisar,60000);
+})();
+</script></body></html>
